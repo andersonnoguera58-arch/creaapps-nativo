@@ -1,0 +1,9 @@
+CREAAPPS CON COMPLEMENTOS NATIVOS ANDROID
+
+Incluye Capacitor y complementos para GPS en primer plano, cámara, notificaciones locales, archivos, vibración, información del dispositivo, red, preferencias, compartir y navegador.
+
+IMPORTANTE:
+- Este proyecto es la aplicación CreaApps, no un generador automático de APK independientes para cada proyecto creado dentro de CreaApps.
+- GPS en segundo plano continuo requiere implementar un servicio Android de primer plano y gestionar permisos según la versión de Android. No está activado en esta versión.
+- El archivo AAB generado por el flujo no está firmado para Google Play.
+- Para compilar, subí los archivos extraídos a la raíz del repositorio, o subí el ZIP y usá el flujo incluido.
