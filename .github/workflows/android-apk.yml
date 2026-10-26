@@ -1,0 +1,86 @@
+name: Compilar CreaApps Android
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Configurar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Encontrar proyecto o extraer ZIP
+        shell: bash
+        run: |
+          set -e
+          PROJECT_DIR="$(find . -type f -name package.json -not -path '*/node_modules/*' -not -path '*/android/*' -not -path '*/extracted/*' -print -quit | xargs -r dirname)"
+          if [ -z "$PROJECT_DIR" ]; then
+            mkdir -p extracted
+            while IFS= read -r -d '' ZIP; do
+              unzip -oq "$ZIP" -d extracted
+              PROJECT_DIR="$(find extracted -type f -name package.json -not -path '*/node_modules/*' -not -path '*/android/*' -print -quit | xargs -r dirname)"
+              [ -n "$PROJECT_DIR" ] && break
+            done < <(find . -maxdepth 3 -type f -iname '*.zip' -print0)
+          fi
+          if [ -z "$PROJECT_DIR" ]; then
+            echo 'ERROR: No se encontro package.json ni un ZIP que contenga el proyecto.'
+            exit 1
+          fi
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Proyecto encontrado: $PROJECT_DIR"
+
+      - name: Instalar dependencias y compilar
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -e
+          npm install
+          npm run build
+
+      - name: Preparar Android y complementos nativos
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -e
+          if [ ! -d android ]; then npx cap add android; fi
+          npx cap sync android
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          grep -q 'android.permission.ACCESS_COARSE_LOCATION' "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />' "$MANIFEST"
+          grep -q 'android.permission.ACCESS_FINE_LOCATION' "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />' "$MANIFEST"
+          grep -q 'android.permission.CAMERA' "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.CAMERA" />' "$MANIFEST"
+          grep -q 'android.permission.POST_NOTIFICATIONS' "$MANIFEST" || sed -i '/<application/i\    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />' "$MANIFEST"
+
+      - name: Generar APK de prueba
+        working-directory: ${{ env.PROJECT_DIR }}/android
+        run: |
+          set -e
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Generar paquete AAB
+        working-directory: ${{ env.PROJECT_DIR }}/android
+        run: ./gradlew bundleRelease
+
+      - name: Guardar archivos generados
+        uses: actions/upload-artifact@v4
+        with:
+          name: CreaApps-Android-Nativo
+          path: |
+            ${{ env.PROJECT_DIR }}/android/app/build/outputs/apk/debug/app-debug.apk
+            ${{ env.PROJECT_DIR }}/android/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
